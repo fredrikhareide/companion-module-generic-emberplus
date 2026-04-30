@@ -79,6 +79,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		this.logger.debug('Old Config:\n', oldConfig)
 
 		this.applyConfig(config)
+		this.setVariableValues({ host: this.config.host ?? '' })
 
 		if (hasConnectionChanged(oldConfig, config)) {
 			this.resetConnection()
@@ -89,6 +90,10 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		} else {
 			this.finalizeSetup().catch((e) => this.logger.error('Error during finalize setup', e))
 		}
+	}
+
+	public async setHost(host: string): Promise<void> {
+		await this.configUpdated({ ...this.config, host })
 	}
 
 	/**
@@ -181,6 +186,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		if (this.emberClient !== undefined) {
 			this.emberClient.removeAllListeners()
 			this.emberClient.discard()
+			this.emberClient = undefined as unknown as EmberClient
 		}
 	}
 

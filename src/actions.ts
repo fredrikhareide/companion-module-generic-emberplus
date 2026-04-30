@@ -47,6 +47,7 @@ export enum ActionId {
 	Clear = 'clear',
 	SetSelectedSource = 'setSelectedSource',
 	SetSelectedTarget = 'setSelectedTarget',
+	SetHost = 'setHost',
 }
 
 const pathDropDown = {
@@ -562,6 +563,20 @@ export function GetActionsList(
 				},
 			],
 			callback: setSelectedTarget(self, state),
+		},
+		[ActionId.SetHost]: {
+			name: 'Set Host',
+			options: [
+				{
+					type: 'textinput',
+					label: 'Connection Host',
+					id: 'host',
+					default: '',
+				},
+			],
+			callback: async (action) => {
+				await self.setHost(action.options.host as string)
+			},
 		},
 	}
 
