@@ -9,12 +9,12 @@ import type {
 } from '@companion-module/base'
 import { EmberClient, Model as EmberModel } from 'emberplus-connection'
 import type PQueue from 'p-queue'
-import type { EmberPlusConfig } from './config.js'
+import { type EmberPlusConfig, portDefault } from './config.js'
 import type { EmberPlusInstance } from './index.js'
 import { doMatrixAction, doTake, doClear, setSelectedSource, setSelectedTarget } from './actions/matrix.js'
 import { learnSetValueActionOptions, setValue, subscribeParameterAction } from './actions/parameter.js'
 import { invokeFunctionAction } from './actions/function.js'
-import { setHostAction } from './actions/host.js'
+import { setHostAction, learnSetHostActionOptions } from './actions/host.js'
 import { EmberPlusState } from './state.js'
 import { filterPathChoices, filterFunctionPathChoices } from './util.js'
 
@@ -615,11 +615,21 @@ export function GetActionsList(
 					label: 'Connection Host',
 					id: 'host',
 					useVariables: { local: true },
-					default: '',
-					tooltip: 'The Hostname/IP of the Ember+ provider. Overrides any device selected by Bonjour.',
+					default: config.host ?? '',
+					tooltip:
+						'The Hostname/IP of the Ember+ provider. Overrides any device selected by Bonjour. Leave empty to keep the current host.',
+				},
+				{
+					type: 'textinput',
+					label: 'Connection Port',
+					id: 'port',
+					useVariables: { local: true },
+					default: (config.port ?? portDefault).toString(),
+					tooltip: 'The port of the Ember+ provider. Leave empty to keep the current port.',
 				},
 			],
 			callback: setHostAction(self),
+			learn: learnSetHostActionOptions(config),
 		},
 	}
 

@@ -17,6 +17,8 @@ import {
 	isDefined,
 	parseBonjourHost,
 	hasConnectionChanged,
+	isValidHostname,
+	isValidPort,
 	recordParameterAction,
 	parseParameterValue,
 	parseFunctionArguments,
@@ -475,6 +477,49 @@ describe('hasConnectionChanged', () => {
 	})
 	it('returns false when neither changed', () => {
 		expect(hasConnectionChanged({ host: 'a', port: 9000 } as any, { host: 'a', port: 9000 } as any)).toBe(false)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// isValidHostname / isValidPort
+// ---------------------------------------------------------------------------
+
+describe('isValidHostname', () => {
+	it('accepts a hostname', () => {
+		expect(isValidHostname('ember-provider')).toBe(true)
+	})
+	it('accepts a fully qualified domain name', () => {
+		expect(isValidHostname('ember.provider.example.com')).toBe(true)
+	})
+	it('accepts an IPv4 address', () => {
+		expect(isValidHostname('192.168.0.1')).toBe(true)
+	})
+	it('rejects a hostname containing illegal characters', () => {
+		expect(isValidHostname('bad host!')).toBe(false)
+	})
+	it('rejects a hostname with a port appended', () => {
+		expect(isValidHostname('10.0.0.1:9000')).toBe(false)
+	})
+	it('rejects an empty string', () => {
+		expect(isValidHostname('')).toBe(false)
+	})
+})
+
+describe('isValidPort', () => {
+	it('accepts the lowest port', () => {
+		expect(isValidPort(1)).toBe(true)
+	})
+	it('accepts the highest port', () => {
+		expect(isValidPort(65535)).toBe(true)
+	})
+	it('rejects zero', () => {
+		expect(isValidPort(0)).toBe(false)
+	})
+	it('rejects ports above the valid range', () => {
+		expect(isValidPort(70000)).toBe(false)
+	})
+	it('rejects non integers', () => {
+		expect(isValidPort(9000.5)).toBe(false)
 	})
 })
 

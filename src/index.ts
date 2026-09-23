@@ -6,7 +6,7 @@ import {
 	type SomeCompanionConfigField,
 } from '@companion-module/base'
 import { GetActionsList } from './actions.js'
-import { type EmberPlusConfig, GetConfigFields } from './config.js'
+import { type EmberPlusConfig, GetConfigFields, portDefault } from './config.js'
 import { GetPresetsList } from './presets.js'
 import { FeedbackId, GetFeedbacksList } from './feedback.js'
 import { EmberPlusState } from './state.js'
@@ -24,6 +24,8 @@ import {
 	recordParameterAction,
 	parseParameterValue,
 	discoverFunctionsFromTree,
+	isValidHostname,
+	isValidPort,
 } from './util.js'
 import { GetVariablesList } from './variables.js'
 import PQueue from 'p-queue'
@@ -93,11 +95,20 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	/**
-	 * Change the host of the connection, persisting it to the module config.
+	 * Change the host and/or port of the connection, persisting it to the module config.
+	 * Values left undefined are kept as configured.
 	 */
-	public async setHost(host: string): Promise<void> {
+	public async setHost(host?: string, port?: number): Promise<void> {
+		if (host !== undefined && !isValidHostname(host)) throw new Error(`Set Host: Invalid hostname: ${host}`)
+		if (port !== undefined && !isValidPort(port)) throw new Error(`Set Host: Invalid port: ${port}`)
+
 		// bonjourHost takes precedence over host in applyConfig, so it must be cleared
-		const config: EmberPlusConfig = { ...this.config, bonjourHost: undefined, host }
+		const config: EmberPlusConfig = {
+			...this.config,
+			bonjourHost: undefined,
+			host: host ?? this.config.host,
+			port: port ?? this.config.port,
+		}
 		this.saveConfig(config)
 		await this.configUpdated(config)
 	}
@@ -150,7 +161,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			updatePresets: true,
 			updateVariables: true,
 		})
-		this.setVariableValues({ host: this.config.host ?? '' })
+		this.setVariableValues({ host: this.config.host ?? '', port: this.config.port ?? portDefault })
 		await this.registerParameters()
 		this.checkFeedbacks()
 	}

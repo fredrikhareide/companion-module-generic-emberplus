@@ -4,7 +4,10 @@ import { sanitiseVariableId } from './util.js'
 import { ParameterType } from 'emberplus-connection/dist/model/index.js'
 
 export function GetVariablesList(state: EmberPlusState): CompanionVariableDefinition[] {
-	const staticVariables: CompanionVariableDefinition[] = [{ name: 'Connection Host', variableId: 'host' }]
+	const staticVariables: CompanionVariableDefinition[] = [
+		{ name: 'Connection Host', variableId: 'host' },
+		{ name: 'Connection Port', variableId: 'port' },
+	]
 
 	if (state.monitoredParameters.size == 0) return staticVariables
 

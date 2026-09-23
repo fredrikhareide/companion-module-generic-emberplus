@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EmberPlusInstance } from './index.js'
 import { EmberPlusState } from './state.js'
+import { parseBonjourHost } from './util.js'
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
 import { LoggerLevel } from './logger.js'
 
@@ -18,6 +19,7 @@ vi.mock('@companion-module/base', () => ({
 		setVariableValues = vi.fn()
 		setPresetDefinitions = vi.fn()
 		recordAction = vi.fn()
+		saveConfig = vi.fn()
 		log = vi.fn()
 	},
 	InstanceStatus: {
@@ -73,6 +75,7 @@ vi.mock('./presets', () => ({ GetPresetsList: vi.fn().mockReturnValue({}) }))
 vi.mock('./variables', () => ({ GetVariablesList: vi.fn().mockReturnValue([]) }))
 vi.mock('./config', () => ({
 	GetConfigFields: vi.fn().mockReturnValue([]),
+	portDefault: 9000,
 }))
 vi.mock('./upgrades', () => ({ UpgradeScripts: [] }))
 
@@ -100,6 +103,11 @@ vi.mock('./util', () => ({
 	hasConnectionChanged: vi.fn().mockReturnValue(false),
 	recordParameterAction: vi.fn(),
 	parseParameterValue: vi.fn().mockReturnValue({ actionType: 'setValueInt', value: 42 }),
+	isValidHostname: (host: string) =>
+		/^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9])$/.test(
+			host,
+		),
+	isValidPort: (port: number) => Number.isInteger(port) && port >= 1 && port <= 0xffff,
 }))
 
 vi.mock('p-queue', () => ({
@@ -382,6 +390,54 @@ describe('updateFeedbacksAndVariables', () => {
 		;(instance as any).throttledFeedbackChecksVariableUpdates = vi.fn()
 		;(instance as any).updateFeedbacksAndVariables('0/1/2', ParameterType.Integer, 5, 5)
 		expect((instance as any).variableValueUpdates['0_1_2']).toBeDefined()
+	})
+})
+
+// ---------------------------------------------------------------------------
+// setHost
+// ---------------------------------------------------------------------------
+
+describe('setHost', () => {
+	function makeHostInstance(): EmberPlusInstance {
+		const instance = makeInstance()
+		;(instance as any).config.bonjourHost = 'device._ember._tcp.local:9000'
+		// applyConfig rewrites host and port from the bonjour parser, so it must reflect the config it is given
+		vi.mocked(parseBonjourHost).mockImplementation((config: any) => [config.host ?? '', config.port ?? 9000])
+		return instance
+	}
+
+	it('saves the new host and clears any bonjour device', async () => {
+		const instance = makeHostInstance()
+		await instance.setHost('10.0.0.5')
+		expect((instance as any).saveConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ host: '10.0.0.5', port: 9000, bonjourHost: undefined }),
+		)
+	})
+
+	it('saves a new port, keeping the configured host', async () => {
+		const instance = makeHostInstance()
+		await instance.setHost(undefined, 9001)
+		expect((instance as any).saveConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ host: '192.168.0.1', port: 9001 }),
+		)
+	})
+
+	it('saves host and port together', async () => {
+		const instance = makeHostInstance()
+		await instance.setHost('10.0.0.5', 9001)
+		expect((instance as any).saveConfig).toHaveBeenCalledWith(expect.objectContaining({ host: '10.0.0.5', port: 9001 }))
+	})
+
+	it('throws and saves nothing for an implausible hostname', async () => {
+		const instance = makeHostInstance()
+		await expect(instance.setHost('not a host!')).rejects.toThrow('Set Host: Invalid hostname: not a host!')
+		expect((instance as any).saveConfig.mock.calls.length).toBe(0)
+	})
+
+	it('throws and saves nothing for a port outside the valid range', async () => {
+		const instance = makeHostInstance()
+		await expect(instance.setHost('10.0.0.5', 70000)).rejects.toThrow('Set Host: Invalid port: 70000')
+		expect((instance as any).saveConfig.mock.calls.length).toBe(0)
 	})
 })
 
