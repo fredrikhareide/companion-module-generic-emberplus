@@ -247,6 +247,19 @@ export function isValidPort(port: number): boolean {
 	return Number.isInteger(port) && port >= 1 && port <= 0xffff
 }
 
+export const MinReconnectDelay = 5000
+export const MaxReconnectDelay = 60000
+
+/**
+ * Exponential backoff for reconnection attempts: 5s, 10s, 20s, 40s, then capped at 60s
+ */
+
+export function nextReconnectDelay(consecutiveFailures: number): number {
+	if (consecutiveFailures <= 1) return MinReconnectDelay
+	const exponent = Math.min(consecutiveFailures - 1, 10)
+	return Math.min(MinReconnectDelay * 2 ** exponent, MaxReconnectDelay)
+}
+
 export function recordParameterAction(
 	path: string,
 	actionType: ActionId,
