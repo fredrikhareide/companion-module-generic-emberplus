@@ -5,6 +5,7 @@ import * as util from './util.js'
 import { parseBonjourHost } from './util.js'
 import { ElementType, ParameterType } from 'emberplus-connection/dist/model/index.js'
 import { LoggerLevel } from './logger.js'
+import { GetVariablesList } from './variables.js'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -14,6 +15,7 @@ vi.mock('@companion-module/base', () => ({
 	InstanceBase: class {
 		checkFeedbacks = vi.fn()
 		checkFeedbacksById = vi.fn()
+		subscribeActions = vi.fn()
 		setActionDefinitions = vi.fn()
 		setFeedbackDefinitions = vi.fn()
 		setVariableDefinitions = vi.fn()
@@ -233,6 +235,15 @@ describe('setupMonitoredParams', () => {
 		;(instance as any).setupMonitoredParams()
 		expect((instance as any).state.monitoredParameters.size).toBe(0)
 	})
+
+	it('drops runtime-registered paths when rebuilt, leaving re-registration to actions and feedbacks', () => {
+		const instance = makeInstance()
+		;(instance as any).config.monitoredParametersString = '0.1.2'
+		;(instance as any).setupMonitoredParams()
+		;(instance as any).state.monitoredParameters.add('0.9.9')
+		;(instance as any).setupMonitoredParams()
+		expect((instance as any).state.monitoredParameters).toEqual(new Set(['0.1.2']))
+	})
 })
 
 // ---------------------------------------------------------------------------
@@ -278,6 +289,70 @@ describe('updateCompanionBits', () => {
 		})
 		expect((instance as any).setVariableDefinitions).toHaveBeenCalled()
 		expect((instance as any).setActionDefinitions.mock.calls.length).toBe(0)
+	})
+
+	it('does not resend unchanged variable definitions', () => {
+		const instance = makeInstance()
+		const defs = [{ variableId: '0.1', name: '0.1' }]
+		vi.mocked(GetVariablesList).mockReturnValue(defs)
+		instance.updateCompanionBits()
+		instance.updateCompanionBits()
+		instance.updateCompanionBits()
+		expect((instance as any).setVariableDefinitions).toHaveBeenCalledTimes(1)
+		vi.mocked(GetVariablesList).mockReturnValue([])
+	})
+
+	it('resends variable definitions when they change', () => {
+		const instance = makeInstance()
+		vi.mocked(GetVariablesList).mockReturnValueOnce([{ variableId: '0.1', name: '0.1' }])
+		instance.updateCompanionBits()
+		vi.mocked(GetVariablesList).mockReturnValueOnce([{ variableId: '0.1', name: '0.1: Gain' }])
+		instance.updateCompanionBits()
+		expect((instance as any).setVariableDefinitions).toHaveBeenCalledTimes(2)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// finalizeSetup
+// ---------------------------------------------------------------------------
+
+describe('finalizeSetup', () => {
+	it('re-subscribes actions after definitions are set, so action paths are re-registered on reconnect', async () => {
+		const instance = makeInstance()
+		await (instance as any).finalizeSetup()
+
+		const subscribeActions = (instance as any).subscribeActions
+		const setActionDefinitions = (instance as any).setActionDefinitions
+		expect(subscribeActions).toHaveBeenCalledTimes(1)
+		expect(subscribeActions).toHaveBeenCalledWith()
+		expect(subscribeActions.mock.invocationCallOrder[0]).toBeGreaterThan(
+			setActionDefinitions.mock.invocationCallOrder[0],
+		)
+		expect((instance as any).checkFeedbacks).toHaveBeenCalledTimes(1)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// registerNewParameter
+// ---------------------------------------------------------------------------
+
+describe('registerNewParameter', () => {
+	it('sends variable definitions once when an already-monitored path re-registers after a cache clear', async () => {
+		// Log from issue #79: after a reconnect every feedback on an already-monitored path
+		// re-registered and each one pushed an identical "Updating variable definitions (11 variables)".
+		const instance = makeInstance()
+		const state: EmberPlusState = (instance as any).state
+		const node = { contents: { type: ElementType.Parameter, parameterType: ParameterType.Integer, value: 1 } }
+		;(instance as any).emberClient = { getElementByPath: vi.fn().mockResolvedValue(node) }
+		vi.mocked(GetVariablesList).mockReturnValue([{ variableId: '0.1', name: '0.1' }])
+
+		for (let i = 0; i < 20; i++) {
+			state.clearCache()
+			await instance.registerNewParameter('0.1', true)
+		}
+
+		expect((instance as any).setVariableDefinitions).toHaveBeenCalledTimes(1)
+		vi.mocked(GetVariablesList).mockReturnValue([])
 	})
 })
 

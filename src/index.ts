@@ -51,6 +51,7 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	private emberQueue: PQueue = new PQueue({ concurrency: 1, autoStart: true })
 	private feedbacksToCheck: Set<string> = new Set<string>()
 	private variableValueUpdates: CompanionVariableValues = {}
+	private lastVariableDefinitions: string | undefined
 	private isRecordingActions: boolean = false
 	private reconnectTimer: NodeJS.Timeout | undefined
 	private reconnectAttempts: number = 0
@@ -166,6 +167,9 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 		})
 		this.setVariableValues({ host: this.config.host ?? '', port: this.config.port ?? portDefault })
 		await this.registerParameters()
+		// Re-run subscribe/callbacks so paths registered at runtime are subscribed on the new client.
+		// Feedbacks re-register from their callback; actions only register from subscribe, which Companion won't call again on its own.
+		this.subscribeActions()
 		this.checkFeedbacks()
 	}
 
@@ -185,8 +189,20 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 			this.setActionDefinitions(GetActionsList(this, this.client, this.config, this.state, this.emberQueue))
 		if (options.updateFeedbacks)
 			this.setFeedbackDefinitions(GetFeedbacksList(this, this.client, this.config, this.state))
-		if (options.updateVariables) this.setVariableDefinitions(GetVariablesList(this.state))
+		if (options.updateVariables) this.updateVariableDefinitions()
 		if (options.updatePresets) this.setPresetDefinitions(GetPresetsList())
+	}
+
+	/**
+	 * Send variable definitions only when they differ from the last set sent.
+	 * Every feedback re-registering its path after a reconnect lands here, almost always with an unchanged set.
+	 */
+	private updateVariableDefinitions(): void {
+		const variables = GetVariablesList(this.state)
+		const serialised = JSON.stringify(variables)
+		if (serialised === this.lastVariableDefinitions) return
+		this.lastVariableDefinitions = serialised
+		this.setVariableDefinitions(variables)
 	}
 
 	public debouncedUpdateActionFeedbackDefs = debounce(() => {
@@ -388,21 +404,16 @@ export class EmberPlusInstance extends InstanceBase<EmberPlusConfig> {
 	}
 
 	private setupMonitoredParams(): void {
-		this.state.monitoredParameters = new Set<string>()
-		if (this.config.monitoredParametersString) {
-			const params = this.config.monitoredParametersString
-				.replaceAll('/', '.')
-				.split(',')
-				.map((param) => param.trim())
-				.filter((param) => param.length > 0)
-				.sort()
-			if (this.state.monitoredParameters.size == 0) this.state.monitoredParameters = new Set(params)
-			else {
-				params.forEach((param) => this.state.monitoredParameters.add(param))
-				const sortedArray = Array.from(this.state.monitoredParameters).sort()
-				this.state.monitoredParameters = new Set(sortedArray)
-			}
-		}
+		// Rebuild from config only. Paths registered at runtime by actions and feedbacks are dropped here and
+		// re-added by subscribeActions() / checkFeedbacks() in finalizeSetup, which prunes paths no longer in use
+		// (eg. a path option driven by a variable that has since changed).
+		const params = (this.config.monitoredParametersString ?? '')
+			.replaceAll('/', '.')
+			.split(',')
+			.map((param) => param.trim())
+			.filter((param) => param.length > 0)
+			.sort()
+		this.state.monitoredParameters = new Set(params)
 	}
 
 	private async registerParameters() {
